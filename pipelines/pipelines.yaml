@@ -12,15 +12,12 @@ Parameters:
   GitHubOwner:
     Type: String
     Default: fluffycloudcomputing
-  ServiceName:
-    Type: String
-    Default: backend-api
   GitHubTokenKey:
     Type: String
-    Default: /github/oauth/token
-  GitHubTokenVersion:
+    Default: /github/token
+  S3BucketName:
     Type: String
-    Default: "1"
+    Default: fluffy-cloud-node-app
 Resources:
   pipelineRole:
     Type: AWS::IAM::Role
@@ -37,8 +34,8 @@ Resources:
       Policies:
         - PolicyName: CodePipelineRole
           PolicyDocument: |
-            {
-              "Statement": [
+              {
+                "Statement": [
                   {
                       "Action": [
                           "iam:PassRole"
@@ -48,162 +45,113 @@ Resources:
                       "Condition": {
                           "StringEqualsIfExists": {
                               "iam:PassedToService": [
-                                  "cloudformation.amazonaws.com",
-                                  "elasticbeanstalk.amazonaws.com",
-                                  "ec2.amazonaws.com",
-                                  "ecs-tasks.amazonaws.com"
+                                  "cloudformation.amazonaws.com"
                               ]
                           }
                       }
                   },
                   {
+                    "Sid": "SSM",
+                    "Effect": "Allow",
+                    "Action": [
+                      "ssm:*"
+                    ],
+                    "Resource": [
+                      "*"
+                    ]
+                  },
+                  {
+                    "Sid": "S3",
+                    "Effect": "Allow",
+                    "Action": [
+                      "s3:*"
+                    ],
+                    "Resource": [
+                      "*"
+                    ]
+                  },
+                  {
+                      "Sid": "CodeBuild",
                       "Action": [
-                          "codecommit:CancelUploadArchive",
-                          "codecommit:GetRepository",
-                          "codecommit:GetBranch",
-                          "codecommit:GetCommit",
-                          "codecommit:GetUploadArchiveStatus",
-                          "codecommit:UploadArchive"
+                        "codebuild:StartBuild"
                       ],
                       "Resource": "*",
                       "Effect": "Allow"
-                  },
-                  {
-                      "Action": [
-                          "codedeploy:CreateDeployment",
-                          "codedeploy:GetApplication",
-                          "codedeploy:GetApplicationRevision",
-                          "codedeploy:GetDeployment",
-                          "codedeploy:GetDeploymentConfig",
-                          "codedeploy:RegisterApplicationRevision"
-                      ],
-                      "Resource": "*",
-                      "Effect": "Allow"
-                  },
-                  {
-                      "Action": [
-                          "codestar-connections:UseConnection"
-                      ],
-                      "Resource": "*",
-                      "Effect": "Allow"
-                  },
-                  {
-                      "Action": [
-                          "elasticbeanstalk:*",
-                          "ec2:*",
-                          "elasticloadbalancing:*",
-                          "autoscaling:*",
-                          "cloudwatch:*",
-                          "s3:*",
-                          "sns:*",
-                          "cloudformation:*",
-                          "rds:*",
-                          "sqs:*",
-                          "ecs:*"
-                      ],
-                      "Resource": "*",
-                      "Effect": "Allow"
-                  },
-                  {
-                      "Action": [
-                          "lambda:InvokeFunction",
-                          "lambda:ListFunctions"
-                      ],
-                      "Resource": "*",
-                      "Effect": "Allow"
-                  },
-                  {
-                      "Action": [
-                          "opsworks:CreateDeployment",
-                          "opsworks:DescribeApps",
-                          "opsworks:DescribeCommands",
-                          "opsworks:DescribeDeployments",
-                          "opsworks:DescribeInstances",
-                          "opsworks:DescribeStacks",
-                          "opsworks:UpdateApp",
-                          "opsworks:UpdateStack"
-                      ],
-                      "Resource": "*",
-                      "Effect": "Allow"
-                  },
-                  {
-                      "Action": [
-                          "cloudformation:CreateStack",
-                          "cloudformation:DeleteStack",
-                          "cloudformation:DescribeStacks",
-                          "cloudformation:UpdateStack",
-                          "cloudformation:CreateChangeSet",
-                          "cloudformation:DeleteChangeSet",
-                          "cloudformation:DescribeChangeSet",
-                          "cloudformation:ExecuteChangeSet",
-                          "cloudformation:SetStackPolicy",
-                          "cloudformation:ValidateTemplate"
-                      ],
-                      "Resource": "*",
-                      "Effect": "Allow"
-                  },
-                  {
-                      "Action": [
-                          "codebuild:BatchGetBuilds",
-                          "codebuild:StartBuild"
-                      ],
-                      "Resource": "*",
-                      "Effect": "Allow"
-                  },
-                  {
-                      "Effect": "Allow",
-                      "Action": [
-                          "devicefarm:ListProjects",
-                          "devicefarm:ListDevicePools",
-                          "devicefarm:GetRun",
-                          "devicefarm:GetUpload",
-                          "devicefarm:CreateUpload",
-                          "devicefarm:ScheduleRun"
-                      ],
-                      "Resource": "*"
-                  },
-                  {
-                      "Effect": "Allow",
-                      "Action": [
-                          "servicecatalog:ListProvisioningArtifacts",
-                          "servicecatalog:CreateProvisioningArtifact",
-                          "servicecatalog:DescribeProvisioningArtifact",
-                          "servicecatalog:DeleteProvisioningArtifact",
-                          "servicecatalog:UpdateProduct"
-                      ],
-                      "Resource": "*"
-                  },
-                  {
-                      "Effect": "Allow",
-                      "Action": [
-                          "cloudformation:ValidateTemplate"
-                      ],
-                      "Resource": "*"
-                  },
-                  {
-                      "Effect": "Allow",
-                      "Action": [
-                          "ecr:DescribeImages"
-                      ],
-                      "Resource": "*"
                   }
-              ],
-              "Version": "2012-10-17"
-            }
+                ],
+                "Version": "2012-10-17"
+              }
+  CodeBuildRole:
+      Type: AWS::IAM::Role
+      Properties:
+        AssumeRolePolicyDocument:
+          Version: 2012-10-17
+          Statement:
+            - Effect: Allow
+              Principal:
+                Service:
+                - codebuild.amazonaws.com
+              Action:
+                - 'sts:AssumeRole'
+        Policies:
+          - PolicyName: ECRAndCodeBuild
+            PolicyDocument: |
+                {
+                  "Version": "2012-10-17",
+                  "Statement": [
+                    {
+                      "Sid": "CloudWatchLogsPolicy",
+                      "Effect": "Allow",
+                      "Action": [
+                        "logs:CreateLogGroup",
+                        "logs:CreateLogStream",
+                        "logs:PutLogEvents"
+                      ],
+                      "Resource": [
+                        "*"
+                      ]
+                    },
+                    {
+                      "Sid": "S3",
+                      "Effect": "Allow",
+                      "Action": [
+                        "s3:PutObject"
+                      ],
+                      "Resource": [
+                        "*"
+                      ]
+                    }
+                  ]
+                }
   AppPipelineWebhook:
     Type: 'AWS::CodePipeline::Webhook'
     Properties:
       Authentication: GITHUB_HMAC
       AuthenticationConfiguration:
-        SecretToken: !Sub "{{resolve:ssm:${GitHubTokenKey}:${GitHubTokenVersion}}}"
+        SecretToken: !Sub "{{resolve:ssm:${GitHubTokenKey}}}"
       Filters:
         - JsonPath: $.ref
           MatchEquals: 'refs/heads/{Branch}'
       TargetPipeline: !Ref AppPipeline
       TargetAction: SourceAction
-      Name: !Sub ${Environment}-${ServiceName}-pipeline-webhook
+      Name: node-app-pipeline-webhook
       TargetPipelineVersion: !GetAtt AppPipeline.Version
       RegisterWithThirdParty: true
+  CodeBuildTestProject:
+    Type: AWS::CodeBuild::Project
+    Properties:
+      Artifacts:
+        Type: CODEPIPELINE
+      Environment:
+        ComputeType: BUILD_GENERAL1_SMALL
+        Image: aws/codebuild/standard:4.0
+        Type: LINUX_CONTAINER
+        PrivilegedMode: true
+      Name: node-app-test
+      ServiceRole: !GetAtt CodeBuildRole.Arn
+      Source:
+        Type: CODEPIPELINE
+        BuildSpec: buildspec-test.yaml
   CodeBuildProject:
     Type: AWS::CodeBuild::Project
     Properties:
@@ -214,42 +162,59 @@ Resources:
         Image: aws/codebuild/standard:4.0
         Type: LINUX_CONTAINER
         PrivilegedMode: true
-      Name: !Sub ${Environment}-${ServiceName}-build
-      ServiceRole:
-        Fn::ImportValue: !Sub "${CodebuildRoleStack}-Codebuild-Role-Arn"
-      Source:
-        Type: CODEPIPELINE
-        BuildSpec: !Sub build-files/buildspec.yaml
-  CodeBuildDeployProject:
-    Type: AWS::CodeBuild::Project
-    Properties:
-      Artifacts:
-        Type: CODEPIPELINE
-      Environment:
-        ComputeType: BUILD_GENERAL1_SMALL
-        Image: aws/codebuild/standard:4.0
-        Type: LINUX_CONTAINER
-        PrivilegedMode: true
-      Name: !Sub ${Environment}-${ServiceName}-deploy
-      ServiceRole:
-        Fn::ImportValue: !Sub "${CodebuildRoleStack}-Codebuild-Role-Arn"
-      SecondarySources:
-        - Type: CODECOMMIT
-          Location: https://git-codecommit.ca-central-1.amazonaws.com/v1/repos/infrastructure-config
-          SourceIdentifier: ConfigSourceOutput
+      Name: node-app-build
+      ServiceRole: !GetAtt CodeBuildRole.Arn
       Source:
         Type: CODEPIPELINE
         SourceIdentifier: SourceOutput
-        BuildSpec: !Sub build-files/buildspec-deploy.yaml
-
+        BuildSpec: !Sub buildspec.yaml
+  PipelineS3Bucket:
+    Type: 'AWS::S3::Bucket'
+    DeletionPolicy: Delete
+    Properties:
+      BucketName: codepipeline-node-app
+  PipelineS3BucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties: 
+      Bucket: !Ref PipelineS3Bucket
+      PolicyDocument: |
+         {
+            "Version": "2012-10-17",
+            "Id": "SSEAndSSLPolicy",
+            "Statement": [
+                {
+                    "Sid": "DenyUnEncryptedObjectUploads",
+                    "Effect": "Deny",
+                    "Principal": "*",
+                    "Action": "s3:PutObject",
+                    "Resource": "arn:aws:s3:::codepipeline-node-app/*",
+                    "Condition": {
+                        "StringNotEquals": {
+                            "s3:x-amz-server-side-encryption": "aws:kms"
+                        }
+                    }
+                },
+                {
+                    "Sid": "DenyInsecureConnections",
+                    "Effect": "Deny",
+                    "Principal": "*",
+                    "Action": "s3:*",
+                    "Resource": "arn:aws:s3:::codepipeline-node-app/*",
+                    "Condition": {
+                        "Bool": {
+                            "aws:SecureTransport": "false"
+                        }
+                    }
+                }
+            ]
+          }
   AppPipeline:
     Type: AWS::CodePipeline::Pipeline
     Properties: 
       ArtifactStore: 
-        Location: codepipeline-ca-central-1-613713259889
+        Location: !Ref PipelineS3Bucket
         Type: S3
-      Name: !Sub "${Environment}-${ServiceName}-pipeline"
-      RestartExecutionOnUpdate: false
+      Name: node-pipeline
       RoleArn: !GetAtt pipelineRole.Arn
       Stages: 
         - Name: Source
@@ -260,29 +225,28 @@ Resources:
                 Owner: ThirdParty
                 Version: 1
                 Provider: GitHub
+              Configuration:
+                Repo: !Ref RepositoryName
+                Owner: !Ref GitHubOwner
+                PollForSourceChanges: false
+                Branch: !Ref BranchName
+                OAuthToken: !Sub "{{resolve:ssm:${GitHubTokenKey}}}"
               OutputArtifacts:
                 - Name: SourceOutput
-              Configuration:
-                Owner: !Ref GitHubOwner
-                Repo: !Ref RepositoryName
-                Branch: !Ref BranchName
-                OAuthToken: !Sub "{{resolve:ssm:${GitHubTokenKey}:${GitHubTokenVersion}}}"
-                PollForSourceChanges: false
               RunOrder: 1
-            - Name: ConfigSource
+        - Name: Test
+          Actions:
+            - Name: TestAction
               ActionTypeId:
-                Category: Source
+                Category: Test
                 Owner: AWS
                 Version: 1
-                Provider: CodeCommit
-              OutputArtifacts:
-                - Name: ConfigSourceOutput
+                Provider: CodeBuild
+              RunOrder: 1     
+              InputArtifacts:
+                - Name: SourceOutput 
               Configuration:
-                RepositoryName: infrastructure-config
-                BranchName: master
-                PollForSourceChanges: false
-                OutputArtifactFormat: CODEBUILD_CLONE_REF
-              RunOrder: 1
+                ProjectName: !Ref CodeBuildTestProject
         - Name: Build
           Actions:
             - Name: BuildAction
@@ -291,25 +255,25 @@ Resources:
                 Owner: AWS
                 Version: 1
                 Provider: CodeBuild
-              RunOrder: 1     
+              RunOrder: 1
               InputArtifacts:
                 - Name: SourceOutput 
               Configuration:
                 ProjectName: !Ref CodeBuildProject
-                EnvironmentVariables: !Sub '[{"name":"APP_ENV","value":"${Environment}","type":"PLAINTEXT"}]'
+                PrimarySource: SourceOutput
+              OutputArtifacts:
+                - Name: BuildOutput
         - Name: Deploy
           Actions:
             - Name: DeployAction
               ActionTypeId:
-                Category: Build
+                Category: Deploy
                 Owner: AWS
                 Version: 1
-                Provider: CodeBuild
+                Provider: S3
               RunOrder: 1
               InputArtifacts:
-                - Name: SourceOutput 
-                - Name: ConfigSourceOutput
+                - Name: BuildOutput 
               Configuration:
-                ProjectName: !Ref CodeBuildDeployProject
-                PrimarySource: SourceOutput
-                EnvironmentVariables: !Sub '[{"name":"CLUSTER_NAME","value":"${ClusterName}","type":"PLAINTEXT"},{"name":"SERVICE_NAME","value":"${ServiceName}","type":"PLAINTEXT"},{"name":"APP_ENV","value":"${Environment}","type":"PLAINTEXT"}]'        
+                BucketName: !Ref S3BucketName
+                Extract: true
