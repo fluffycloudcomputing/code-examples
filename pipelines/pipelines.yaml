@@ -33,55 +33,45 @@ Resources:
               - "sts:AssumeRole"
       Policies:
         - PolicyName: CodePipelineRole
-          PolicyDocument: |
-            {
-              "Statement": [
-                {
-                    "Action": [
-                        "iam:PassRole"
-                    ],
-                    "Resource": "*",
+          PolicyDocument: !Sub |
+              {
+                "Statement": [              
+                  {
+                    "Sid": "SSM",
                     "Effect": "Allow",
-                    "Condition": {
-                        "StringEqualsIfExists": {
-                            "iam:PassedToService": [
-                                "cloudformation.amazonaws.com"
-                            ]
-                        }
-                    }
-                },
-                {
-                  "Sid": "SSM",
-                  "Effect": "Allow",
-                  "Action": [
-                    "ssm:*"
-                  ],
-                  "Resource": [
-                    "*"
-                  ]
-                },
-                {
-                  "Sid": "S3",
-                  "Effect": "Allow",
-                  "Action": [
-                    "s3:*"
-                  ],
-                  "Resource": [
-                    "*"
-                  ]
-                },
-                {
-                    "Sid": "CodeBuild",
                     "Action": [
-                      "codebuild:StartBuild",
-                      "codebuild:BatchGetBuilds"
+                      "ssm:GetParameters"
                     ],
-                    "Resource": "*",
-                    "Effect": "Allow"
-                }
-              ],
-              "Version": "2012-10-17"
-            }
+                    "Resource": [
+                      "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter${GitHubTokenKey}"
+                    ]
+                  },
+                  {
+                    "Sid": "S3",
+                    "Effect": "Allow",
+                    "Action": [
+                      "s3:*",
+                      "s3:GetObject"
+                    ],
+                    "Resource": [
+                      "${PipelineS3Bucket.Arn}/*"
+                    ]
+                  },
+                  {
+                      "Sid": "CodeBuild",
+                      "Action": [
+                        "codebuild:StartBuild",
+                        "codebuild:BatchGetBuilds"
+                      ],
+                      "Resource": [
+                        "${CodeBuildTestProject.Arn}",
+                        "${CodeBuildProject.Arn}"
+                      ],
+                      "Effect": "Allow"
+                  }
+                ],
+                "Version": "2012-10-17"
+              }
   CodeBuildRole:
     Type: AWS::IAM::Role
     Properties:
@@ -95,36 +85,38 @@ Resources:
             Action:
               - "sts:AssumeRole"
       Policies:
-        - PolicyName: ECRAndCodeBuild
-          PolicyDocument: |
-            {
-              "Version": "2012-10-17",
-              "Statement": [
-                {
-                  "Sid": "CloudWatchLogsPolicy",
-                  "Effect": "Allow",
-                  "Action": [
-                    "logs:CreateLogGroup",
-                    "logs:CreateLogStream",
-                    "logs:PutLogEvents"
-                  ],
-                  "Resource": [
-                    "*"
-                  ]
-                },
-                {
-                  "Sid": "S3",
-                  "Effect": "Allow",
-                  "Action": [
-                    "s3:PutObject",
-                    "s3:Get*"
-                  ],
-                  "Resource": [
-                    "*"
-                  ]
-                }
-              ]
-            }
+        - PolicyName: S3Codebuild
+          PolicyDocument: !Sub
+          - |
+              {
+                "Version": "2012-10-17",
+                "Statement": [
+                  {
+                    "Sid": "CloudWatchLogsPolicy",
+                    "Effect": "Allow",
+                    "Action": [
+                      "logs:CreateLogGroup",
+                      "logs:CreateLogStream",
+                      "logs:PutLogEvents"
+                    ],
+                    "Resource": [
+                      "*"
+                    ]
+                  },
+                  {
+                    "Sid": "S3",
+                    "Effect": "Allow",
+                    "Action": [
+                      "s3:PutObject",
+                      "s3:GetObject"
+                    ],
+                    "Resource": [
+                      "${BucketARN}/*"
+                    ]
+                  }
+                ]
+              }
+          - BucketARN: !GetAtt PipelineS3Bucket.Arn
   AppPipelineWebhook:
     Type: "AWS::CodePipeline::Webhook"
     Properties:
@@ -148,7 +140,6 @@ Resources:
         ComputeType: BUILD_GENERAL1_SMALL
         Image: aws/codebuild/standard:4.0
         Type: LINUX_CONTAINER
-        PrivilegedMode: true
       Name: node-app-test
       ServiceRole: !GetAtt CodeBuildRole.Arn
       Source:
@@ -163,7 +154,6 @@ Resources:
         ComputeType: BUILD_GENERAL1_SMALL
         Image: aws/codebuild/standard:4.0
         Type: LINUX_CONTAINER
-        PrivilegedMode: true
       Name: node-app-build
       ServiceRole: !GetAtt CodeBuildRole.Arn
       Source:
@@ -174,12 +164,12 @@ Resources:
     Type: "AWS::S3::Bucket"
     DeletionPolicy: Delete
     Properties:
-      BucketName: codepipeline-node-app
+      BucketName: !Sub codepipeline-${AWS::Region}-${AWS::AccountId}
   PipelineS3BucketPolicy:
     Type: AWS::S3::BucketPolicy
     Properties:
       Bucket: !Ref PipelineS3Bucket
-      PolicyDocument: |
+      PolicyDocument: !Sub |
         {
            "Version": "2012-10-17",
            "Id": "SSEAndSSLPolicy",
@@ -189,7 +179,7 @@ Resources:
                    "Effect": "Deny",
                    "Principal": "*",
                    "Action": "s3:PutObject",
-                   "Resource": "arn:aws:s3:::codepipeline-node-app/*",
+                   "Resource": "arn:aws:s3:::codepipeline-${AWS::Region}-${AWS::AccountId}/*",
                    "Condition": {
                        "StringNotEquals": {
                            "s3:x-amz-server-side-encryption": "aws:kms"
@@ -201,7 +191,7 @@ Resources:
                    "Effect": "Deny",
                    "Principal": "*",
                    "Action": "s3:*",
-                   "Resource": "arn:aws:s3:::codepipeline-node-app/*",
+                   "Resource": "arn:aws:s3:::codepipeline-${AWS::Region}-${AWS::AccountId}/*",
                    "Condition": {
                        "Bool": {
                            "aws:SecureTransport": "false"
