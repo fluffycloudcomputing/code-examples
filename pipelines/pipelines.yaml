@@ -17,9 +17,9 @@ Parameters:
     Default: /github/token
   S3BucketName:
     Type: String
-    Default: fluffycloudcomputing-node-app
+    Default: node-app-fluffycloudcomputing-com
 Resources:
-  pipelineRole:
+  PipelineRole:
     Type: AWS::IAM::Role
     Properties:
       AssumeRolePolicyDocument:
@@ -34,44 +34,44 @@ Resources:
       Policies:
         - PolicyName: CodePipelineRole
           PolicyDocument: !Sub |
-              {
-                "Statement": [              
-                  {
-                    "Sid": "SSM",
-                    "Effect": "Allow",
+            {
+              "Statement": [              
+                {
+                  "Sid": "SSM",
+                  "Effect": "Allow",
+                  "Action": [
+                    "ssm:GetParameters"
+                  ],
+                  "Resource": [
+                    "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter${GitHubTokenKey}"
+                  ]
+                },
+                {
+                  "Sid": "S3",
+                  "Effect": "Allow",
+                  "Action": [
+                    "s3:PutObject",
+                    "s3:GetObject"
+                  ],
+                  "Resource": [
+                    "${PipelineS3Bucket.Arn}/*"
+                  ]
+                },
+                {
+                    "Sid": "CodeBuild",
                     "Action": [
-                      "ssm:GetParameters"
+                      "codebuild:StartBuild",
+                      "codebuild:BatchGetBuilds"
                     ],
                     "Resource": [
-                      "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter${GitHubTokenKey}"
-                    ]
-                  },
-                  {
-                    "Sid": "S3",
-                    "Effect": "Allow",
-                    "Action": [
-                      "s3:*",
-                      "s3:GetObject"
+                      "${CodeBuildTestProject.Arn}",
+                      "${CodeBuildProject.Arn}"
                     ],
-                    "Resource": [
-                      "${PipelineS3Bucket.Arn}/*"
-                    ]
-                  },
-                  {
-                      "Sid": "CodeBuild",
-                      "Action": [
-                        "codebuild:StartBuild",
-                        "codebuild:BatchGetBuilds"
-                      ],
-                      "Resource": [
-                        "${CodeBuildTestProject.Arn}",
-                        "${CodeBuildProject.Arn}"
-                      ],
-                      "Effect": "Allow"
-                  }
-                ],
-                "Version": "2012-10-17"
-              }
+                    "Effect": "Allow"
+                }
+              ],
+              "Version": "2012-10-17"
+            }
   CodeBuildRole:
     Type: AWS::IAM::Role
     Properties:
@@ -87,7 +87,7 @@ Resources:
       Policies:
         - PolicyName: S3Codebuild
           PolicyDocument: !Sub
-          - |
+            - |
               {
                 "Version": "2012-10-17",
                 "Statement": [
@@ -116,7 +116,7 @@ Resources:
                   }
                 ]
               }
-          - BucketARN: !GetAtt PipelineS3Bucket.Arn
+            - BucketARN: !GetAtt PipelineS3Bucket.Arn
   AppPipelineWebhook:
     Type: "AWS::CodePipeline::Webhook"
     Properties:
@@ -207,7 +207,7 @@ Resources:
         Location: !Ref PipelineS3Bucket
         Type: S3
       Name: node-pipeline
-      RoleArn: !GetAtt pipelineRole.Arn
+      RoleArn: !GetAtt PipelineRole.Arn
       Stages:
         - Name: Source
           Actions:
@@ -269,3 +269,40 @@ Resources:
               Configuration:
                 BucketName: !Ref S3BucketName
                 Extract: true
+  AppS3Bucket:
+    Type: "AWS::S3::Bucket"
+    DeletionPolicy: Delete
+    Properties:
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      BucketName: node-app-fluffycloudcomputing-com
+  AppS3BucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref AppS3Bucket
+      PolicyDocument: !Sub |
+        {
+          "Version": "2008-10-17",
+          "Id": "GetPut",
+          "Statement": [
+            {
+              "Sid": "1",
+              "Effect": "Allow",
+              "Principal": "*",
+              "Resource": "arn:aws:s3:::${AppS3Bucket}/*",
+              "Action": "s3:GetObject"
+            },
+            {
+              "Sid": "2",
+              "Effect": "Allow",
+              "Principal": {
+                "AWS": "${PipelineRole.Arn}"
+              },
+              "Resource": "arn:aws:s3:::${AppS3Bucket}/*",
+              "Action": "s3:PutObject"
+            }
+          ]
+        }

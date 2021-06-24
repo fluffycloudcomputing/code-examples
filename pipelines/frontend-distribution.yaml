@@ -1,0 +1,99 @@
+Parameters:
+  URL:
+    Type: String
+    Default: node-app.fluffycloud.com
+Resources:
+  AppS3Bucket:
+    Type: "AWS::S3::Bucket"
+    DeletionPolicy: Delete
+    Properties:
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      BucketName: node-app-fluffycloudcomputing-com
+  AppS3BucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref AppS3Bucket
+      PolicyDocument: !Sub |
+        {
+          "Version": "2008-10-17",
+          "Id": "GetPut",
+          "Statement": [
+            {
+              "Sid": "1",
+              "Effect": "Allow",
+              "Principal": "*",
+              "Resource": "arn:aws:s3:::${AppS3Bucket}/*",
+              "Action": "s3:GetObject"
+            },
+            {
+              "Sid": "2",
+              "Effect": "Allow",
+              "Principal": {
+                "AWS": "${PipelineRole.Arn}"
+              },
+              "Resource": "arn:aws:s3:::${AppS3Bucket}/*",
+              "Action": "s3:PutObject"
+            }
+          ]
+        }
+  Type: AWS::CloudFront::Distribution
+  Properties:
+    DistributionConfig:
+      Aliases:
+        - !Ref URL
+      CustomErrorResponses:
+        - ErrorCode: 404
+          ResponseCode: 200
+          ResponsePagePath: /index.html
+        - ErrorCode: 401
+          ResponseCode: 200
+          ResponsePagePath: /index.html
+      DefaultCacheBehavior:
+        CachePolicyId: 658327ea-f89d-4fab-a63d-7e88639e58f6
+        TargetOriginId: node-app-S3-Origin
+        ViewerProtocolPolicy: redirect-to-https
+      DefaultRootObject: index.html
+      Enabled: true
+      Origins:
+        - S3OriginConfig:
+            OriginAccessIdentity: !Sub "origin-access-identity/cloudfront/${CloudFrontOriginIdentity}"
+          DomainName: !Sub "${AppS3Bucket}.s3.amazonaws.com"
+          Id: node-app-S3-Origin
+      ViewerCertificate: !Ref Certificate
+      WebACLId: !Ref WAFWebACL
+  CloudFrontOriginIdentity:
+    Type: AWS::CloudFront::CloudFrontOriginAccessIdentity
+    Properties:
+      CloudFrontOriginAccessIdentityConfig:
+        Comment: node-app
+  Certificate:
+    Type: AWS::CertificateManager::Certificate
+    Properties:
+      CertificateAuthorityArn: String
+      CertificateTransparencyLoggingPreference: String
+      DomainName: String
+      DomainValidationOptions:
+        - DomainValidationOption
+      SubjectAlternativeNames:
+        - String
+      Tags:
+        - Tag
+      ValidationMethod: String
+  WAFWebACL:
+    Type: AWS::WAFv2::WebACL
+    Properties:
+      CustomResponseBodies:
+        Key: Value
+      DefaultAction: DefaultAction
+      Description: String
+      Name: String
+      Rules:
+        - Rule
+      Scope: String
+      Tags:
+        - Tag
+      VisibilityConfig: VisibilityConfig
