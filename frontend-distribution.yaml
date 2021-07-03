@@ -1,0 +1,139 @@
+Parameters:
+  URL:
+    Type: String
+    Default: node-app.fluffycloudcomputing.com
+  HostedZoneID:
+    Type: String
+  DomainName:
+    Type: String
+Resources:
+  AppS3Bucket:
+    Type: "AWS::S3::Bucket"
+    DeletionPolicy: Delete
+    Properties:
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      BucketName: "node-fluffycloudcomputing-com"
+  AppS3BucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref AppS3Bucket
+      PolicyDocument: !Sub |
+        {
+          "Version": "2008-10-17",
+          "Id": "GetPut",
+          "Statement": [
+            {
+              "Sid": "1",
+              "Effect": "Allow",
+             "Principal": {
+                "AWS": "arn:aws:iam::cloudfront:user/CloudFront Origin Access Identity ${CloudFrontOriginIdentity}"
+              },
+              "Resource": "arn:aws:s3:::${AppS3Bucket}/*",
+              "Action": "s3:GetObject"
+            }
+          ]
+        }
+  CFDistribution:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Aliases:
+          - !Ref URL
+        DefaultCacheBehavior:
+          CachePolicyId: 658327ea-f89d-4fab-a63d-7e88639e58f6
+          TargetOriginId: node-app-S3-Origin
+          ViewerProtocolPolicy: redirect-to-https
+        DefaultRootObject: index.html
+        Enabled: true
+        Origins:
+          - S3OriginConfig:
+              OriginAccessIdentity: !Sub "origin-access-identity/cloudfront/${CloudFrontOriginIdentity}"
+            DomainName: !Sub "${AppS3Bucket}.s3.amazonaws.com"
+            Id: node-app-S3-Origin
+        ViewerCertificate:
+            AcmCertificateArn: !Ref Certificate
+            MinimumProtocolVersion: TLSv1.2_2018
+            SslSupportMethod: sni-only
+        WebACLId: !Ref WAFWebACL
+  CloudFrontOriginIdentity:
+    Type: AWS::CloudFront::CloudFrontOriginAccessIdentity
+    Properties:
+      CloudFrontOriginAccessIdentityConfig:
+        Comment: node-app
+  Certificate:
+    Type: AWS::CertificateManager::Certificate
+    Properties:
+      DomainName: !Ref DomainName
+      DomainValidationOptions:
+        - DomainName: !Ref URL
+          HostedZoneId: !Ref HostedZoneID
+      ValidationMethod: DNS
+  WAFWebACL:
+    Type: AWS::WAFv2::WebACL
+    Properties:
+      Name: CloudFrontWAF
+      Scope: CLOUDFRONT
+      Description: Web ACL using AWS Managed Rules.
+      DefaultAction: 
+        Allow: {}
+      VisibilityConfig:
+        SampledRequestsEnabled: true
+        CloudWatchMetricsEnabled: true
+        MetricName: !Join
+            - ""
+            - - CloudFrontWAF
+              - "Metric"
+      Rules: 
+        - Name: AWS-AWSManagedRulesAmazonIpReputationList
+          Priority: 1
+          OverrideAction:
+            Count: {}
+          VisibilityConfig:
+            SampledRequestsEnabled: true
+            CloudWatchMetricsEnabled: true
+            MetricName: MetricForAMRIPRepList
+          Statement:
+            ManagedRuleGroupStatement:
+              VendorName: AWS
+              Name: AWSManagedRulesAmazonIpReputationList
+        - Name: AWS-AWSManagedRulesAnonymousIpList
+          Priority: 2
+          OverrideAction:
+            Count: {}
+          VisibilityConfig:
+            SampledRequestsEnabled: true
+            CloudWatchMetricsEnabled: true
+            MetricName: MetricForAMRAnonIpList
+          Statement:
+            ManagedRuleGroupStatement:
+              VendorName: AWS
+              Name: AWSManagedRulesAnonymousIpList
+        - Name: AWS-AWSManagedRulesCommonRuleSet
+          Priority: 3
+          OverrideAction:
+            None: {}
+          VisibilityConfig:
+            SampledRequestsEnabled: true
+            CloudWatchMetricsEnabled: true
+            MetricName: MetricForAMRCRS
+          Statement:
+            ManagedRuleGroupStatement:
+              VendorName: AWS
+              Name: AWSManagedRulesCommonRuleSet 
+        - Name: AWS-AWSManagedRulesKnownBadInputsRuleSet
+          Priority: 4
+          OverrideAction:
+            None: {}
+          VisibilityConfig:
+            SampledRequestsEnabled: true
+            CloudWatchMetricsEnabled: true
+            MetricName: MetricForAMRKnownBadInputs
+          Statement:
+            ManagedRuleGroupStatement:
+              VendorName: AWS
+              Name: AWSManagedRulesKnownBadInputsRuleSet 
+
