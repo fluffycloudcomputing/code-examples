@@ -1,7 +1,6 @@
 Parameters:
   URL:
     Type: String
-    Default: node-app.fluffycloudcomputing.com
   HostedZoneID:
     Type: String
   DomainName:
@@ -41,6 +40,10 @@ Resources:
     Type: AWS::CloudFront::Distribution
     Properties:
       DistributionConfig:
+        CustomErrorResponses:
+          - ErrorCode: 404
+            ResponseCode: 200
+            ResponsePagePath: /
         Aliases:
           - !Ref URL
         DefaultCacheBehavior:
@@ -56,9 +59,9 @@ Resources:
             Id: node-app-S3-Origin
         ViewerCertificate:
             AcmCertificateArn: !Ref Certificate
-            MinimumProtocolVersion: TLSv1.2_2018
+            MinimumProtocolVersion: TLSv1.2_2021
             SslSupportMethod: sni-only
-        WebACLId: !Ref WAFWebACL
+        WebACLId: !GetAtt WAFWebACL.Arn
   CloudFrontOriginIdentity:
     Type: AWS::CloudFront::CloudFrontOriginAccessIdentity
     Properties:
@@ -67,7 +70,7 @@ Resources:
   Certificate:
     Type: AWS::CertificateManager::Certificate
     Properties:
-      DomainName: !Ref DomainName
+      DomainName: !Sub "*.${DomainName}"
       DomainValidationOptions:
         - DomainName: !Ref URL
           HostedZoneId: !Ref HostedZoneID
@@ -135,5 +138,15 @@ Resources:
           Statement:
             ManagedRuleGroupStatement:
               VendorName: AWS
-              Name: AWSManagedRulesKnownBadInputsRuleSet 
+              Name: AWSManagedRulesKnownBadInputsRuleSet
+  DNSRecord:
+    Type: AWS::Route53::RecordSet
+    Properties:
+      AliasTarget:
+        DNSName: !GetAtt CFDistribution.DomainName
+        EvaluateTargetHealth: false
+        HostedZoneId: Z2FDTNDATAQYW2
+      HostedZoneId : !Ref HostedZoneID
+      Name: !Ref URL
+      Type: A
 

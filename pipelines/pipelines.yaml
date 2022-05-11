@@ -86,8 +86,7 @@ Resources:
               - "sts:AssumeRole"
       Policies:
         - PolicyName: S3Codebuild
-          PolicyDocument: !Sub
-            - |
+          PolicyDocument: !Sub |
               {
                 "Version": "2012-10-17",
                 "Statement": [
@@ -111,12 +110,11 @@ Resources:
                       "s3:GetObject"
                     ],
                     "Resource": [
-                      "${BucketARN}/*"
+                      "${PipelineS3Bucket.Arn}/*"
                     ]
                   }
                 ]
               }
-            - BucketARN: !GetAtt PipelineS3Bucket.Arn
   AppPipelineWebhook:
     Type: "AWS::CodePipeline::Webhook"
     Properties:

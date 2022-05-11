@@ -1,0 +1,7 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: ec2 instance
+Resources: 
+  myEC2Instance:
+    Type: AWS::EC2::Instance
+    Properties:
+      ImageId: ami-02e136e904f3da870
